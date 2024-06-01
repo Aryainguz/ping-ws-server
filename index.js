@@ -1,23 +1,39 @@
 const WebSocket = require('ws');
 
-const server = new WebSocket.Server({ port: 8080 });
+const wss = new WebSocket.Server({ port: 8080 });
 
-server.on('connection', socket => {
-  console.log('A user connected');
+const clients = new Map();
 
-  socket.on('message', message => {
-    console.log('Received:', message);
-    // Broadcast the message to all connected clients except the sender
-    server.clients.forEach(client => {
-      if (client !== socket && client.readyState === WebSocket.OPEN) {
-        client.send(message);
+wss.on('connection', (ws) => {
+  console.log('New client connected');
+
+  ws.on('message', (message) => {
+    const parsedMessage = JSON.parse(message);
+    const { type, receiverId, file } = parsedMessage;
+
+    if (type === 'register') {
+      clients.set(receiverId, ws);
+      ws.receiverId = receiverId;
+      // console.log(`Client registered with ID: ${receiverId}`);
+    } else if (type === 'file') {
+      const receiverWs = clients.get(receiverId);
+      if (receiverWs) {
+        receiverWs.send(JSON.stringify({ type: 'file', file }));
+        // console.log(`File sent to client with ID: ${receiverId}`);
+      } else {
+        console.log(`Client with ID: ${receiverId} not found`);
       }
-    });
+    }
   });
 
-  socket.on('close', () => {
-    console.log('A user disconnected');
+  ws.on('close', () => {
+    clients.delete(ws.receiverId);
+    console.log(`Client with ID: ${ws.receiverId} disconnected`);
+  });
+
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
   });
 });
 
-console.log('Signaling server is running on ws://localhost:8080');
+console.log('WebSocket server is running on ws://localhost:8080');
